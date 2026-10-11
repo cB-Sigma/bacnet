@@ -58,6 +58,12 @@ distributed. The BACnet/SC test issues its certificates from the test CA
 that ships with bacnet-stack (bin/certs), read from the container at run
 time and not stored here.
 
+interop/bacpypes3/Dockerfile installs BACpypes3 0.0.110
+(https://github.com/JoelBender/BACpypes3, Copyright Joel Bender, MIT)
+from PyPI into a python:3.12.10-slim image at test time; client.py and
+device.py there are our own scripts calling it. Nothing of BACpypes3 is
+included in this repository.
+
 Test data
 ---------
 

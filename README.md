@@ -1,6 +1,6 @@
 # bacnet
 
-A BACnet client in pure Go for BACnet/IP, BACnet/IPv6 and BACnet Secure Connect (ANSI/ASHRAE Standard 135-2024).
+A BACnet client and device in pure Go for BACnet/IP, BACnet/IPv6 and BACnet Secure Connect (ANSI/ASHRAE Standard 135-2024).
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/cB-Sigma/bacnet.svg)](https://pkg.go.dev/github.com/cB-Sigma/bacnet) [![test](https://github.com/cB-Sigma/bacnet/actions/workflows/test.yml/badge.svg)](https://github.com/cB-Sigma/bacnet/actions/workflows/test.yml) [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE) [![Go](https://img.shields.io/badge/go-1.27.1-00ADD8.svg)](go.mod)
 
@@ -8,7 +8,9 @@ The module encodes and decodes BVLC, NPDU and APDU, runs confirmed and
 unconfirmed services with segmentation both ways, reaches devices behind
 BACnet routers, registers as a foreign device and can act as a BBMD. On
 BACnet/SC it is a hub connector with failover, a hub function and a node
-with direct connections, over TLS 1.3 WebSockets. It has no cgo; TLS
+with direct connections, over TLS 1.3 WebSockets. Since v0.2.0 the
+`device` package serves objects to other BACnet clients (the device
+role), on its own BACnet/IP socket or on a client's data link. It has no cgo; TLS
 comes from [tlsx](https://github.com/cB-Sigma/tlsx) (a fork of Go's
 crypto/tls with on-demand key updates). It was written for SigmaM2M, a
 oneM2M platform, where it serves the BACnet integrations; it does not
@@ -30,9 +32,10 @@ depend on it.
 | AcknowledgeAlarm, GetEventInformation, GetAlarmSummary, event notifications | yes |
 | AtomicReadFile, AtomicWriteFile, AddListElement | yes |
 | DeviceCommunicationControl, ReinitializeDevice, TimeSynchronization, UTCTimeSynchronization | yes |
-| Segmentation, both directions, windowed Segment-ACKs (clause 5.4) | yes; only against this module's own simulator (no open peer implements it, see below) |
+| Segmentation, both directions, windowed Segment-ACKs (clause 5.4) | yes (tested against BACpypes3 0.0.110 both ways, client and device role) |
 | Errors, rejects and aborts as Go errors | yes |
-| Device object model (serving objects to other clients) | no: a client; SigmaM2M keeps its BACnet device side |
+| Device role (`device`): the Device object and an object table; Who-Is, Who-Has; ReadProperty, ReadPropertyMultiple (array index, ALL, REQUIRED, OPTIONAL); WriteProperty, WritePropertyMultiple with priority arrays; SubscribeCOV with confirmed and unconfirmed notifications; segmented answers and requests; on its own B/IP socket or on a client's B/IP, B/IPv6 or BACnet/SC link | yes (since v0.2.0; tested against BACpypes3's client) |
+| Device role: ReadRange of trend logs, file access, alarms and events, DeviceCommunicationControl and ReinitializeDevice served, intrinsic reporting | no (see Not yet) |
 | MS/TP, Ethernet, ARCNET, LonTalk, PTP data links | no (reach MS/TP devices through a BACnet router) |
 
 Security hooks: `SCTLS` takes the operational certificate and issuers,
@@ -51,18 +54,18 @@ below. Check the projects themselves before relying on a row.
 | Language | Go, no cgo | C | Python (asyncio) | Go |
 | Licence | Apache-2.0 | GPL-2.0 with the GCC linking exception (some files other licences) | MIT | GPL-2.0 |
 | Client | yes | yes (command-line tools and library) | yes | ReadProperty, ReadPropertyMultiple, Who-Is only |
-| Device (server) side | no | yes | yes | no |
-| Segmentation | both ways | no state machine (the SEGMENT switch only changes what the device claims) | yes | no |
+| Device (server) side | yes: properties, writes with priorities, COV, segmentation (no trend logs, files, alarms yet) | yes | yes | no |
+| Segmentation | both ways (tested against BACpypes3) | no state machine (the SEGMENT switch only changes what the device claims) | yes | no |
 | Foreign device, BBMD | both | both (tested) | both | no |
 | BACnet/IPv6 | yes | yes | yes | no |
 | BACnet/SC | hub connector, hub function, direct connections | hub, node, direct connections (tested as hub) | hub and direct connections over the websockets package | no |
 | Simulated device for tests | yes ([bacnet-sim](https://github.com/cB-Sigma/bacnet-sim)) | demo server | sample applications | no |
 
 Pick this module for a Go program that reads, writes and subscribes to
-BACnet devices, including over BACnet/SC, without cgo. Pick
-bacnet-stack or BACpypes3 when you need to be a BACnet device (serve
-objects) or need MS/TP; bacnet-stack for C and embedded targets,
-BACpypes3 for Python. The Go packages found besides this one
+BACnet devices, or serves points as a BACnet device, including over
+BACnet/SC, without cgo. Pick bacnet-stack or BACpypes3 when your device
+must serve trend logs, files, schedules or alarms, or needs MS/TP;
+bacnet-stack for C and embedded targets, BACpypes3 for Python. The Go packages found besides this one
 (gobacnet and its forks, for example NubeDev/bacnet) cover reading and
 discovery only and are GPL-2.0.
 
@@ -104,7 +107,18 @@ c := bacnet.NewClientSC(n, slog.Default())
 n.Start(ctx)
 ```
 
-The runnable example in this module is `ExampleEncodeReadProperty`;
+A device (v0.2.0):
+
+```go
+d := device.New(device.Config{Instance: 4010, Name: "AHU-1", VendorID: 999})
+d.AddObject(&device.Object{ID: bacnet.ObjectID{Type: bacnet.AnalogValue, Instance: 1}, Name: "Supply Setpoint",
+	Commandable: true, Props: map[uint32]any{bacnet.PropPresentValue: float32(18), bacnet.PropUnits: bacnet.Enumerated(62)}})
+d.Listen("0.0.0.0:47808")
+d.Set(bacnet.ObjectID{Type: bacnet.AnalogValue, Instance: 1}, bacnet.PropPresentValue, float32(19)) // COV subscribers are told
+```
+
+The device tests (device/device_test.go) run it against this module's
+client. The runnable example in this module is `ExampleEncodeReadProperty`;
 bacnet-sim has a client example against the simulated device.
 
 ## Documentation
@@ -114,7 +128,8 @@ API reference: https://pkg.go.dev/github.com/cB-Sigma/bacnet
 | Package | What it does |
 |---|---|
 | `bacnet` (module root) | the codec; `Client` over B/IP (`NewClient`), B/IPv6 (`NewClient6`) and BACnet/SC (`NewClientSC`); services, ReadRange, segmentation, BBMD state; BACnet/SC `SCNode`, `SCHub`, `NodeSwitch`, `SCTLS` |
-| `interop` (nested module, tests only) | this module's client against bacnet-stack 1.6.1 in Docker |
+| `device` | the device role: `New`, `Config`, `Device` (`AddObject`, `Set`, `Get`, `Listen`, `Attach`, `IAm`, `Handle`, `Close`), `Object`, `Error` |
+| `interop` (nested module, tests only) | this module's client against bacnet-stack 1.6.1 in Docker; the client and the device role against BACpypes3 0.0.110 in Docker |
 
 The API is wide: SigmaM2M's adapter uses encoders, decoders and data
 link internals directly. Narrowing it is planned before v1.
@@ -183,10 +198,20 @@ to a client that accepts only 50 octets; its BBMD distributes a
 broadcast from a device that has not registered instead of refusing it;
 with `SEGMENT=true` the device claims segmentation it does not have.
 
+BACpypes3 0.0.110 (2026-10-12, python:3.12.10-slim in Docker Desktop;
+`interop/bacpypes3_test.go`, our scripts in `interop/bacpypes3`); every
+item passed:
+
+| Direction | What was checked |
+|---|---|
+| BACpypes3's client, this module's device role | the Device object's 405-entry object-list, sent in segments to a client taking 1024 octets; object-name; ReadPropertyMultiple of two objects; a write of 23.5 at priority 8 read back, and the 16-entry priority array; SubscribeCOV with unconfirmed notifications, the initial value and the change the device made |
+| This module's client, a BACpypes3 device | its 302-entry object-list and a ReadPropertyMultiple of 300 object names, both answered in segments; a ReadPropertyMultiple of 80 names and a WritePropertyMultiple of 40 values sent in segments (the peer stated to take 128 octets), the values read back |
+
 Not tested against an independent implementation:
 
-- Segmentation in either direction: bacnet-stack 1.6.1 has none.
-  BACpypes3 has segmentation; it was not run.
+- The device role against bacnet-stack's client tools, and over
+  BACnet/IPv6 and BACnet/SC (`Attach`) against another implementation
+  (in process only).
 - This module's hub function with bacnet-stack's node: under Docker
   Desktop the node in its container never opened a connection to a hub
   on the host (the test is in `interop/` and skipped by default).
@@ -197,6 +222,16 @@ Not tested against an independent implementation:
 - Real controllers and BMS head ends.
 - In process: the simulated device of bacnet-sim (same author, so not
   independent).
+
+## Not yet
+
+| What | Why |
+|---|---|
+| The device role serving ReadRange of trend logs, AtomicRead/WriteFile, alarms and events (GetEventInformation, event notifications, intrinsic reporting), schedules, DeviceCommunicationControl and ReinitializeDevice | SigmaM2M's BACnet adapter serves these from its own object store (same author); moving them into `device` is the next release |
+| The device role as a router or BBMD | the `Client`'s BBMD function and routing exist; wiring them to a device port is planned |
+| This module's BACnet/SC hub with bacnet-stack's node | under Docker Desktop the node in its container never opened a connection to a hub on the host; hub and node are tested against each other in process (`TestSCHubForwarding`) |
+| MS/TP, Ethernet, ARCNET, LonTalk, PTP | MS/TP needs an RS-485 port; reach such devices through a BACnet router |
+| Real controllers and BMS head ends | needs hardware |
 
 ## Related repositories
 

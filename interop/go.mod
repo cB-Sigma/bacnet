@@ -3,7 +3,7 @@ module github.com/cB-Sigma/bacnet/interop
 go 1.27.1
 
 require (
-	github.com/cB-Sigma/bacnet v0.0.0
+	github.com/cB-Sigma/bacnet v0.2.0
 	github.com/cB-Sigma/tlsx v0.6.0
 )
 

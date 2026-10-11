@@ -62,6 +62,16 @@ README.md the sources of BACpypes3 0.0.110 and gobacnet (commit
 63505d3) were looked at for which features they have; nothing was
 taken from them.
 
+For v0.2.0 (2026-10-12) the `device` package (the device role) was
+written new, our own code from clauses 5.4 (segmentation), 12.11 (the
+Device object), 13.1 and 13.14 (COV), 15.5, 15.7, 15.9 and 15.10
+(property access), 16.9 and 16.10 (Who-Has, Who-Is) and 19.2
+(commandable properties), on this module's codec. bacnet-sim's
+simulated device was not moved into it: the simulator stays a test
+device with fault switches. BACpypes3 0.0.110 was then run as a second
+independent peer (interop/bacpypes3): our scripts call its client and
+device classes in a container; nothing of it was copied.
+
 ## Test vectors and where they come from
 
 | Test | Source |
